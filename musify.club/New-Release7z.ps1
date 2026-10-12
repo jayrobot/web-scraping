@@ -1,6 +1,8 @@
 <#
 .SYNOPSIS
-    Packs the MP3s and cover.webp in a folder into a .7z archive.
+    Packs the MP3s and cover.webp in a folder into a .7z archive, then deletes
+    the archived files once the archive has been created and verified.
+    Use -WhatIf to see what would be deleted without deleting anything.
 
 .PARAMETER Name
     Name of the archive (".7z" is added if missing).
@@ -14,7 +16,7 @@
 .EXAMPLE
     .\New-Release7z.ps1 -Name "Artist - Album (2020)" -Path "D:\Music\Album"
 #>
-[CmdletBinding()]
+[CmdletBinding(SupportsShouldProcess)]
 param(
     [Parameter(Mandatory, Position = 0)]
     [string]$Name,
@@ -71,7 +73,20 @@ try {
     & $sevenZip a -t7z -mx=9 -scsUTF-8 -bb0 -bd $archive "@$listFile" | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "7-Zip failed with exit code $LASTEXITCODE" }
     Write-Host "Created $archive" -ForegroundColor Green
+
+    # Verify the archive before removing the originals.
+    & $sevenZip t -bd $archive | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Archive verification failed (exit code $LASTEXITCODE); source files were not deleted." }
+
+    $deleted = 0
+    foreach ($file in $files) {
+        if ($PSCmdlet.ShouldProcess($file, 'Delete')) {
+            Remove-Item -LiteralPath $file -Force
+            $deleted++
+        }
+    }
+    if ($deleted) { Write-Host "Deleted $deleted archived file(s)" }
 }
 finally {
-    Remove-Item -LiteralPath $listFile -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $listFile -Force -ErrorAction SilentlyContinue -WhatIf:$false
 }
